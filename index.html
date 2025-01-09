@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ICC to sRGB Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #444;
+        }
+        p {
+            font-size: 1.1rem;
+            max-width: 600px;
+            text-align: center;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 600px;
+        }
+        #fileInput {
+            display: none;
+        }
+        .upload-btn {
+            background-color: #007bff;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+            display: inline-block; /* Ensure button is centered */
+        }
+        .upload-btn:hover {
+            background-color: #0056b3;
+        }
+        .download-all-btn {
+            background-color: #28a745;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 1rem auto 0; /* Center the button */
+            display: none; /* Hidden by default */
+            transition: background-color 0.3s ease;
+        }
+        .download-all-btn:hover {
+            background-color: #218838;
+        }
+        .status {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .github-link {
+            margin-top: 2rem;
+            font-size: 0.9rem;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .github-link a {
+            color: #007bff;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+        .github-link a:hover {
+            text-decoration: underline;
+        }
+        .github-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 0.5rem;
+        }
+        .download-link {
+            display: block;
+            margin-top: 1rem;
+            color: #007bff;
+            text-decoration: none;
+            font-size: 1rem;
+        }
+        .download-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ICC to sRGB Converter</h1>
+        <p>
+            This tool uses your browser's built-in color management to convert images to sRGB. When an image is loaded, the browser performs a basic conversion from the original ICC profile to sRGB. This is not a professional color management solution - it simply uses the browser's default conversion behavior, which may not be accurate for all ICC profiles. The output is saved as a PNG file in sRGB color space without any embedded profile.
+
+            Best used for quick conversions where exact color accuracy isn't critical. For professional work requiring precise color management, please use dedicated software instead.
+        </p>
+        <label for="fileInput" class="upload-btn">Upload Images</label>
+        <input type="file" id="fileInput" multiple accept="image/*">
+        <div class="status" id="status">No images uploaded yet.</div>
+        <button id="downloadAllBtn" class="download-all-btn">Download All as ZIP</button>
+        <div id="singleDownload"></div>
+        <div class="github-link">
+            <a href="https://github.com/Kim2091/icc-to-srgb-web" target="_blank">
+                <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub" class="github-icon">
+                View the code on GitHub
+            </a>
+        </div>
+    </div>
+
+    <!-- Include JSZip library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <script>
+        let convertedImages = [];
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
+
+            // Reset state
+            convertedImages = [];
+            document.getElementById('status').textContent = `Processing ${files.length} image(s)...`;
+            document.getElementById('downloadAllBtn').style.display = 'none';
+            document.getElementById('singleDownload').innerHTML = ''; // Clear single download link
+
+            // Process each file
+            let processedCount = 0;
+            for (let file of files) {
+                processImage(file).then(() => {
+                    processedCount++;
+                    if (processedCount === files.length) {
+                        document.getElementById('status').textContent = `Processed ${files.length} image(s). Ready to download!`;
+                        if (files.length === 1) {
+                            // Single image: Provide direct download link
+                            const downloadLink = document.createElement('a');
+                            downloadLink.href = URL.createObjectURL(convertedImages[0].blob);
+                            downloadLink.download = convertedImages[0].name;
+                            downloadLink.textContent = `Download ${convertedImages[0].name}`;
+                            downloadLink.className = 'download-link';
+                            document.getElementById('singleDownload').appendChild(downloadLink);
+                        } else {
+                            // Multiple images: Show "Download All as ZIP" button
+                            document.getElementById('downloadAllBtn').style.display = 'block';
+                        }
+                    }
+                });
+            }
+        });
+
+        async function processImage(file) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    // Convert canvas to Blob
+                    canvas.toBlob(function(blob) {
+                        const convertedImage = {
+                            name: file.name.replace(/\.[^/.]+$/, '') + '_converted.png',
+                            blob: blob
+                        };
+                        convertedImages.push(convertedImage);
+                        resolve();
+                    }, 'image/png');
+                };
+                img.onerror = function(e) {
+                    console.error('Error loading image:', e);
+                    resolve();
+                };
+            });
+        }
+
+        document.getElementById('downloadAllBtn').addEventListener('click', function() {
+            const zip = new JSZip();
+            const folder = zip.folder('converted_images');
+
+            // Add each converted image to the ZIP
+            convertedImages.forEach((image) => {
+                folder.file(image.name, image.blob);
+            });
+
+            // Generate the ZIP file
+            zip.generateAsync({ type: 'blob' }).then(function(content) {
+                saveAs(content, 'converted_images.zip');
+            });
+        });
+    </script>
+</body>
+</html>
