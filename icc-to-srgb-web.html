@@ -2,6 +2,17 @@
 <html>
 <head>
     <title>ICC to sRGB Converter</title>
+    <!-- Load CDN resources with integrity checks and explicit CORS -->
+    <script 
+        src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" 
+        integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" 
+        crossorigin="anonymous"
+    ></script>
+    <script 
+        src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" 
+        integrity="sha512-Qlv6VSKh1gDKGoJbnyA5RMXYcvnpIqhO++MhIM2fStMcGT9i2T//tSwYFlcyoRRDcDZ+TYHpH8azBBCyhpSeqw==" 
+        crossorigin="anonymous"
+    ></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -47,7 +58,7 @@
             cursor: pointer;
             font-size: 1rem;
             transition: background-color 0.3s ease;
-            display: inline-block; /* Ensure button is centered */
+            display: inline-block;
         }
         .upload-btn:hover {
             background-color: #0056b3;
@@ -59,8 +70,8 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 1rem;
-            margin: 1rem auto 0; /* Center the button */
-            display: none; /* Hidden by default */
+            margin: 1rem auto 0;
+            display: none;
             transition: background-color 0.3s ease;
         }
         .download-all-btn:hover {
@@ -118,93 +129,100 @@
         <div id="singleDownload"></div>
         <div class="github-link">
             <a href="https://github.com/Kim2091/icc-to-srgb-web" target="_blank">
-                <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub" class="github-icon">
+                <!-- Use inline SVG instead of external image -->
+                <svg class="github-icon" height="24" width="24" viewBox="0 0 16 16">
+                    <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                </svg>
                 View the code on GitHub
             </a>
         </div>
     </div>
 
-    <!-- Include JSZip library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-
     <script>
-        let convertedImages = [];
+        // Wait for CDN scripts to load
+        window.addEventListener('load', function() {
+            if (typeof JSZip === 'undefined' || typeof saveAs === 'undefined') {
+                document.getElementById('status').textContent = 'Error: Required libraries failed to load. Please refresh the page.';
+                return;
+            }
 
-        document.getElementById('fileInput').addEventListener('change', function(event) {
-            const files = event.target.files;
-            if (files.length === 0) return;
+            let convertedImages = [];
 
-            // Reset state
-            convertedImages = [];
-            document.getElementById('status').textContent = `Processing ${files.length} image(s)...`;
-            document.getElementById('downloadAllBtn').style.display = 'none';
-            document.getElementById('singleDownload').innerHTML = ''; // Clear single download link
+            document.getElementById('fileInput').addEventListener('change', function(event) {
+                const files = event.target.files;
+                if (files.length === 0) return;
 
-            // Process each file
-            let processedCount = 0;
-            for (let file of files) {
-                processImage(file).then(() => {
-                    processedCount++;
-                    if (processedCount === files.length) {
-                        document.getElementById('status').textContent = `Processed ${files.length} image(s). Ready to download!`;
-                        if (files.length === 1) {
-                            // Single image: Provide direct download link
-                            const downloadLink = document.createElement('a');
-                            downloadLink.href = URL.createObjectURL(convertedImages[0].blob);
-                            downloadLink.download = convertedImages[0].name;
-                            downloadLink.textContent = `Download ${convertedImages[0].name}`;
-                            downloadLink.className = 'download-link';
-                            document.getElementById('singleDownload').appendChild(downloadLink);
-                        } else {
-                            // Multiple images: Show "Download All as ZIP" button
-                            document.getElementById('downloadAllBtn').style.display = 'block';
+                // Reset state
+                convertedImages = [];
+                document.getElementById('status').textContent = `Processing ${files.length} image(s)...`;
+                document.getElementById('downloadAllBtn').style.display = 'none';
+                document.getElementById('singleDownload').innerHTML = '';
+
+                // Process each file
+                let processedCount = 0;
+                for (let file of files) {
+                    processImage(file).then(() => {
+                        processedCount++;
+                        if (processedCount === files.length) {
+                            document.getElementById('status').textContent = `Processed ${files.length} image(s). Ready to download!`;
+                            if (files.length === 1) {
+                                // Single image: Provide direct download link
+                                const downloadLink = document.createElement('a');
+                                downloadLink.href = URL.createObjectURL(convertedImages[0].blob);
+                                downloadLink.download = convertedImages[0].name;
+                                downloadLink.textContent = `Download ${convertedImages[0].name}`;
+                                downloadLink.className = 'download-link';
+                                document.getElementById('singleDownload').appendChild(downloadLink);
+                            } else {
+                                // Multiple images: Show "Download All as ZIP" button
+                                document.getElementById('downloadAllBtn').style.display = 'block';
+                            }
                         }
-                    }
+                    });
+                }
+            });
+
+            async function processImage(file) {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.src = URL.createObjectURL(file);
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+
+                        // Convert canvas to Blob
+                        canvas.toBlob(function(blob) {
+                            const convertedImage = {
+                                name: file.name.replace(/\.[^/.]+$/, '') + '_converted.png',
+                                blob: blob
+                            };
+                            convertedImages.push(convertedImage);
+                            resolve();
+                        }, 'image/png');
+                    };
+                    img.onerror = function(e) {
+                        console.error('Error loading image:', e);
+                        resolve();
+                    };
                 });
             }
-        });
 
-        async function processImage(file) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.src = URL.createObjectURL(file);
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
+            document.getElementById('downloadAllBtn').addEventListener('click', function() {
+                const zip = new JSZip();
+                const folder = zip.folder('converted_images');
 
-                    // Convert canvas to Blob
-                    canvas.toBlob(function(blob) {
-                        const convertedImage = {
-                            name: file.name.replace(/\.[^/.]+$/, '') + '_converted.png',
-                            blob: blob
-                        };
-                        convertedImages.push(convertedImage);
-                        resolve();
-                    }, 'image/png');
-                };
-                img.onerror = function(e) {
-                    console.error('Error loading image:', e);
-                    resolve();
-                };
-            });
-        }
+                // Add each converted image to the ZIP
+                convertedImages.forEach((image) => {
+                    folder.file(image.name, image.blob);
+                });
 
-        document.getElementById('downloadAllBtn').addEventListener('click', function() {
-            const zip = new JSZip();
-            const folder = zip.folder('converted_images');
-
-            // Add each converted image to the ZIP
-            convertedImages.forEach((image) => {
-                folder.file(image.name, image.blob);
-            });
-
-            // Generate the ZIP file
-            zip.generateAsync({ type: 'blob' }).then(function(content) {
-                saveAs(content, 'converted_images.zip');
+                // Generate the ZIP file
+                zip.generateAsync({ type: 'blob' }).then(function(content) {
+                    saveAs(content, 'converted_images.zip');
+                });
             });
         });
     </script>
